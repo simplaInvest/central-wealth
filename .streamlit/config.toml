@@ -1,0 +1,15 @@
+[server]
+runOnSave = true
+
+[theme]
+base = "dark"
+primaryColor = "#bfa94c"
+backgroundColor = "#0e1117"
+secondaryBackgroundColor = "#262730"
+textColor = "#FAFAFA"
+
+[client]
+showSidebarNavigation = false
+
+[ui]
+layout = "wide"
