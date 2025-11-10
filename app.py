@@ -19,7 +19,7 @@ logins = st.secrets["logins"]
 st.set_page_config(page_title="Login - Expert Comercial Wealth", 
                    page_icon="📊", 
                    layout="wide", 
-                   initial_sidebar_state="collapsed")
+                   initial_sidebar_state="expanded")
 
 # Inicializa o estado de login
 if "authenticated" not in st.session_state:
@@ -27,8 +27,9 @@ if "authenticated" not in st.session_state:
     st.session_state.user_type = None
     st.session_state.team = None
 
-# Oculta a sidebar para quem não está logado
-st.sidebar.empty()
+# Oculta a sidebar apenas para quem não está logado
+if not st.session_state.authenticated:
+    st.sidebar.empty()
 
 # Página de Login
 def main():
