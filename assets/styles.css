@@ -1,0 +1,67 @@
+/* Base app container */
+[data-testid="stAppViewContainer"] {
+  background: #000000 !important;
+  color: #ffffff !important;
+}
+
+/* Header */
+[data-testid="stHeader"] {
+  background: #000000 !important;
+  border-bottom: 1px solid #111111;
+}
+
+/* Main content container */
+.block-container {
+  padding-top: 1rem !important;
+}
+
+/* Headings */
+h1, h2, h3, h4 {
+  color: #bfa94c !important;
+}
+
+/* Metrics cards */
+[data-testid="stMetric"] {
+  background: #0a0a0a !important;
+  border: 1px solid #bfa94c !important;
+  border-radius: 10px !important;
+  padding: 10px 12px !important;
+}
+[data-testid="stMetric"] div[data-testid="stMetricDelta"] svg {
+  fill: #bfa94c !important;
+}
+
+/* Tabs styling */
+.stTabs [role="tablist"] {
+  border-bottom: 1px solid #1a1a1a !important;
+}
+.stTabs [role="tab"] {
+  color: #ffffff !important;
+}
+.stTabs [role="tab"][aria-selected="true"] {
+  color: #bfa94c !important;
+  border-bottom: 2px solid #bfa94c !important;
+}
+
+/* Expanders */
+[data-testid="stExpander"] {
+  background: #0a0a0a !important;
+  border: 1px solid #1a1a1a !important;
+  border-radius: 8px !important;
+}
+
+/* Buttons */
+.stButton > button {
+  color: #000000 !important;
+  background: #bfa94c !important;
+  border: 1px solid #bfa94c !important;
+  border-radius: 6px !important;
+}
+.stButton > button:hover {
+  filter: brightness(1.05) !important;
+}
+
+/* Plotly figure container tweak for spacing */
+.element-container:has(.js-plotly-plot) {
+  margin-top: 4px;
+}

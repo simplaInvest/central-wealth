@@ -11,9 +11,12 @@ from viz.charts import bar_chart, pie_chart
 # =========================
 # ------ PAGE CONFIG ------
 # =========================
-st.set_page_config(page_title="Central", layout="wide")
+st.set_page_config(page_title="Central", page_icon="📊", layout="wide")
 st.logo(image='assets/z_logo_light.png', size='large')
 st.write(""); st.write(""); st.write("")
+
+# Título
+st.title("📊 Central")
 
 st.markdown("""
     <style>
@@ -23,6 +26,13 @@ st.markdown("""
         }
     </style>
 """, unsafe_allow_html=True)
+
+# Sidebar: Navegação
+with st.sidebar:
+    st.markdown("**Navegação**")
+    st.page_link("pages/1_central.py", label="📊 Central")
+    st.page_link("pages/2_reunioes.py", label="🗓️ Reuniões")
+    st.markdown("---")
 
 # =========================
 # ------ PAGE LAYOUT ------
