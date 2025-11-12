@@ -678,6 +678,16 @@ with tabs[2]:
                 fig_cag.add_vline(x=meta_c, line_dash="dash", line_color="#bfa94c")
                 fig_cag.add_scatter(x=[None], y=[None], mode="lines", name="Meta", line=dict(color="#bfa94c", dash="dash"))
                 fig_cag.add_annotation(x=meta_c, y=1, xref="x", yref="paper", text=f"Meta ({meta_c})", showarrow=False, font=dict(color="#bfa94c", size=14))
+                # Total de agendamentos (caixa, semelhante ao gráfico de SDR)
+                total_barras_c = int(perf_c["Agendadas"].sum()) if not perf_c.empty else 0
+                fig_cag.add_annotation(
+                    x=1.0, y=0.067, xref="paper", yref="paper",
+                    text=f"Total: {total_barras_c}", showarrow=False,
+                    xanchor="right", yanchor="middle", align="center",
+                    font=dict(color="#bfa94c", size=18),
+                    bordercolor="#bfa94c", borderwidth=1.8, borderpad=4,
+                    bgcolor="#000000"
+                )
                 style_fig(fig_cag)
                 st.plotly_chart(fig_cag, use_container_width=True)
                 st.dataframe(perf_c, use_container_width=True, hide_index=True)
