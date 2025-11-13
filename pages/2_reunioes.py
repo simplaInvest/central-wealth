@@ -37,6 +37,13 @@ if "authenticated" not in st.session_state or not st.session_state.authenticated
     st.error("Você precisa estar logado para acessar esta página.")
     st.stop()
 
+try:
+    from streamlit_autorefresh import st_autorefresh as _st_autorefresh
+except Exception:
+    _st_autorefresh = None
+if _st_autorefresh:
+    _st_autorefresh(interval=900000, key="reunioes_refresh")
+
 # ------------------------------------------------------------
 # CABEÇALHO
 # ------------------------------------------------------------
@@ -51,6 +58,10 @@ with st.sidebar:
     st.page_link("pages/1_central.py", label="📊 Central")
     st.page_link("pages/2_reunioes.py", label="🗓️ Reuniões")
     st.markdown("---")
+    last_up = st.session_state.get("sheets_last_update_at")
+    if last_up:
+        st.caption(f"Última atualização das planilhas: {last_up.strftime('%d/%m/%Y %H:%M:%S')}")
+    
 
 # ------------------------------------------------------------
 # CONFIGURAÇÕES DE PLANILHA
@@ -107,7 +118,7 @@ def get_role_column(df: pd.DataFrame, canonical: str) -> str | None:
     return find_column_by_patterns(df, patterns)
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=900, show_spinner=False)
 def load_worksheet(url: str, tab_name: str) -> pd.DataFrame:
     gc = _get_gspread_client()
     sh = gc.open_by_url(url)
@@ -117,42 +128,31 @@ def load_worksheet(url: str, tab_name: str) -> pd.DataFrame:
     for col in df.columns:
         if "data" in col:
             df[col] = pd.to_datetime(df[col], errors="coerce")
+    df.attrs["loaded_at"] = datetime.now()
     return df
 
 
 def ensure_session_data():
-    """Carrega as planilhas CONSULTOR e SDR automaticamente e guarda no SessionState.
-    Também armazena cópias 'raw' (sem slugify/parsing) para debug comparativo.
-    """
     try:
-        need_norm = not (
-            "reunioes_consultor" in st.session_state and "reunioes_sdr" in st.session_state
-        )
-        need_raw = not (
-            "reunioes_consultor_raw" in st.session_state and "reunioes_sdr_raw" in st.session_state
-        )
+        with st.spinner("🔄 Carregando planilhas do Google Sheets..."):
+            df_consultor = load_worksheet(SHEET_URL_DEFAULT, TAB_CONSULTOR)
+            df_sdr = load_worksheet(SHEET_URL_DEFAULT, TAB_SDR)
+            st.session_state["reunioes_consultor"] = df_consultor
+            st.session_state["reunioes_sdr"] = df_sdr
+            ts_cons = df_consultor.attrs.get("loaded_at")
+            ts_sdr = df_sdr.attrs.get("loaded_at")
+            st.session_state["sheets_last_update_at"] = max(ts_cons, ts_sdr) if ts_cons and ts_sdr else (ts_cons or ts_sdr or datetime.now())
 
-        if need_norm or need_raw:
-            with st.spinner("🔄 Carregando planilhas do Google Sheets..."):
-                # Normalizado (slugify + parsing de datas)
-                if need_norm:
-                    df_consultor = load_worksheet(SHEET_URL_DEFAULT, TAB_CONSULTOR)
-                    df_sdr = load_worksheet(SHEET_URL_DEFAULT, TAB_SDR)
-                    st.session_state["reunioes_consultor"] = df_consultor
-                    st.session_state["reunioes_sdr"] = df_sdr
-
-                # Raw verdadeiro (nome original de colunas e sem parsing)
-                if need_raw:
-                    gc = _get_gspread_client()
-                    sh = gc.open_by_url(SHEET_URL_DEFAULT)
-                    ws_cons = sh.worksheet(TAB_CONSULTOR)
-                    ws_sdr = sh.worksheet(TAB_SDR)
-                    df_cons_raw = pd.DataFrame(ws_cons.get_all_records())
-                    df_sdr_raw = pd.DataFrame(ws_sdr.get_all_records())
-                    st.session_state["reunioes_consultor_raw"] = df_cons_raw
-                    st.session_state["reunioes_sdr_raw"] = df_sdr_raw
-
-            st.success("✅ Planilhas carregadas com sucesso.")
+        if "reunioes_consultor_raw" not in st.session_state or "reunioes_sdr_raw" not in st.session_state:
+            gc = _get_gspread_client()
+            sh = gc.open_by_url(SHEET_URL_DEFAULT)
+            ws_cons = sh.worksheet(TAB_CONSULTOR)
+            ws_sdr = sh.worksheet(TAB_SDR)
+            df_cons_raw = pd.DataFrame(ws_cons.get_all_records())
+            df_sdr_raw = pd.DataFrame(ws_sdr.get_all_records())
+            st.session_state["reunioes_consultor_raw"] = df_cons_raw
+            st.session_state["reunioes_sdr_raw"] = df_sdr_raw
+        st.success("✅ Planilhas carregadas com sucesso.")
     except Exception as e:
         st.error(f"Erro ao carregar planilhas: {e}")
         st.stop()
