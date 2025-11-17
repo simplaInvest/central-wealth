@@ -557,6 +557,10 @@ with tabs[0]:
 with tabs[1]:
     st.subheader("Evolução Diária")
     idx = pd.bdate_range(data_ini, data_fim)
+    # Alturas ampliadas para aproveitar mais espaço vertical disponível
+    gauge_h = 270
+    line_h = 340
+    bar_h = 340
 
     sdr_only_agendamentos = sdr_f[(sdr_f["nome_do_sdr"].notna()) & (sdr_f["nome_do_sdr"] != "Consultor (eu mesmo)")]
     agendadas_sdrs = len(sdr_only_agendamentos)
@@ -586,29 +590,54 @@ with tabs[1]:
     meta_realizadas_sdrs = 4 * n_sdrs * dias_uteis
     meta_assinados_sdrs = 1 * n_sdrs * dias_uteis
 
-    # Linha 1: apenas velocímetros (3 colunas)
-    g1, g2, g3 = st.columns(3)
-    with g1:
-        fig_g1 = go.Figure(go.Indicator(mode="gauge+number", value=int(agendadas_f), title={"text": "Agendadas"}, gauge={"axis": {"range": [0, meta_agendadas_sdrs]}, "bar": {"color": "#bfa94c"}}))
+    # Linha única: velocímetros com anotações de conversão nos gaps
+    cols_top = st.columns([1, 0.28, 1, 0.28, 1])
+    with cols_top[0]:
+        fig_g1 = go.Figure(
+            go.Indicator(
+                mode="gauge+number",
+                value=int(agendadas_f),
+                title={"text": "Agendadas", "font": {"size": 12}},
+                number={"font": {"size": 40}},
+                gauge={"axis": {"range": [0, meta_agendadas_sdrs]}, "bar": {"color": "#bfa94c"}},
+            )
+        )
+        fig_g1.update_layout(height=gauge_h, margin=dict(t=10, b=0, l=0, r=0))
         style_fig(fig_g1)
         st.plotly_chart(fig_g1, use_container_width=True)
 
-    with g2:
-        fig_g2 = go.Figure(go.Indicator(mode="gauge+number", value=int(executadas_qual_f), title={"text": "Executadas Qualificadas"}, gauge={"axis": {"range": [0, meta_realizadas_sdrs]}, "bar": {"color": "#bfa94c"}}))
+    with cols_top[2]:
+        fig_g2 = go.Figure(
+            go.Indicator(
+                mode="gauge+number",
+                value=int(executadas_qual_f),
+                title={"text": "Executadas Qualificadas", "font": {"size": 12}},
+                number={"font": {"size": 40}},
+                gauge={"axis": {"range": [0, meta_realizadas_sdrs]}, "bar": {"color": "#bfa94c"}},
+            )
+        )
+        fig_g2.update_layout(height=gauge_h, margin=dict(t=10, b=0, l=0, r=0))
         style_fig(fig_g2)
         st.plotly_chart(fig_g2, use_container_width=True)
 
-    with g3:
+    with cols_top[4]:
         assinados_f = (reunioes_f["contrato"] == "Contrato Assinado").sum()
-        fig_g3 = go.Figure(go.Indicator(mode="gauge+number", value=int(assinados_f), title={"text": "Contratos Assinados"}, gauge={"axis": {"range": [0, meta_assinados_sdrs]}, "bar": {"color": "#bfa94c"}}))
+        fig_g3 = go.Figure(
+            go.Indicator(
+                mode="gauge+number",
+                value=int(assinados_f),
+                title={"text": "Contratos Assinados", "font": {"size": 12}},
+                number={"font": {"size": 40}},
+                gauge={"axis": {"range": [0, meta_assinados_sdrs]}, "bar": {"color": "#bfa94c"}},
+            )
+        )
+        fig_g3.update_layout(height=gauge_h, margin=dict(t=10, b=0, l=0, r=0))
         style_fig(fig_g3)
         st.plotly_chart(fig_g3, use_container_width=True)
 
-    # Linha 2: conversões posicionadas exatamente sob os gaps entre velocímetros
     conv_exec = _pct(executadas_qual_f, agendadas_f)
     conv_env = _pct(assinados_f, executadas_qual_f)
-    gap_cols = st.columns([1, 0.28, 1, 0.28, 1])  # colunas estreitas nos gaps
-    with gap_cols[1]:
+    with cols_top[1]:
         st.markdown(
             f"""
             <div class='metric-card'>
@@ -619,7 +648,7 @@ with tabs[1]:
             """,
             unsafe_allow_html=True,
         )
-    with gap_cols[3]:
+    with cols_top[3]:
         st.markdown(
             f"""
             <div class='metric-card'>
@@ -641,16 +670,32 @@ with tabs[1]:
             ts_ag["Agendadas"] = ts_ag["Agendadas"].fillna(0).astype(int)
             ts_ag["Agendadas_Acumulado"] = ts_ag["Agendadas"].cumsum()
             fig_l1 = px.line(ts_ag, x="Data", y="Agendadas_Acumulado", markers=True)
-            fig_l1.update_traces(mode="lines+markers+text", text=ts_ag["Agendadas_Acumulado"], textposition="top center")
+            fig_l1.update_traces(mode="lines+markers+text", text=ts_ag["Agendadas_Acumulado"], textposition="top center", cliponaxis=False)
+            # Meta diária acumulada (SDRs): 7 * n_sdrs por dia
+            meta_ag_acc = None
+            if filtro_operador == "SDRs":
+                meta_ag_acc = (np.arange(1, len(idx) + 1) * (7 * n_sdrs)).astype(float)
+                fig_l1.add_scatter(
+                    x=idx,
+                    y=meta_ag_acc,
+                    name="Meta diária (acumulada)",
+                    line=dict(color="#bfa94c", width=2, dash="dash"),
+                    mode="lines",
+                )
+            y_max_acc_1 = float(ts_ag["Agendadas_Acumulado"].max()) if len(ts_ag) else 0.0
+            y_meta_1 = float(meta_ag_acc.max()) if meta_ag_acc is not None else 0.0
+            fig_l1.update_yaxes(range=[0, max(1.0, y_max_acc_1, y_meta_1) * 1.12], automargin=True)
+            fig_l1.update_layout(height=line_h, margin=dict(t=20, b=10, l=0, r=0))
             style_fig(fig_l1)
             st.plotly_chart(fig_l1, use_container_width=True)
 
             # Gráfico de Barras
             fig_b1 = px.bar(ts_ag, x="Data", y="Agendadas", text="Agendadas")
             fig_b1.update_traces(textposition="outside", cliponaxis=False)
-            y_max_1 = max(int(ts_ag["Agendadas"].max()), 20)
-            fig_b1.update_yaxes(range=[0, (7 * n_sdrs)*1.1])
+            y_max_1 = max(int(ts_ag["Agendadas"].max()), 0)
+            fig_b1.update_yaxes(range=[0, max(y_max_1, (7 * n_sdrs)) * 1.2])
             fig_b1.add_hline(y=(7 * n_sdrs), line_dash="dash", line_color="#bfa94c")
+            fig_b1.update_layout(height=bar_h)
             style_fig(fig_b1)
             st.plotly_chart(fig_b1, use_container_width=True)
 
@@ -663,16 +708,32 @@ with tabs[1]:
             ts_eq["Executadas Qualificadas"] = ts_eq["Executadas Qualificadas"].fillna(0).astype(int)
             ts_eq["Executadas_Qualificadas_Acumulado"] = ts_eq["Executadas Qualificadas"].cumsum()
             fig_l2 = px.line(ts_eq, x="Data", y="Executadas_Qualificadas_Acumulado", markers=True)
-            fig_l2.update_traces(mode="lines+markers+text", text=ts_eq["Executadas_Qualificadas_Acumulado"], textposition="top center")
+            fig_l2.update_traces(mode="lines+markers+text", text=ts_eq["Executadas_Qualificadas_Acumulado"], textposition="top center", cliponaxis=False)
+            # Meta diária acumulada (SDRs): 4 * n_sdrs por dia
+            meta_eq_acc = None
+            if filtro_operador == "SDRs":
+                meta_eq_acc = (np.arange(1, len(idx) + 1) * (4 * n_sdrs)).astype(float)
+                fig_l2.add_scatter(
+                    x=idx,
+                    y=meta_eq_acc,
+                    name="Meta diária (acumulada)",
+                    line=dict(color="#bfa94c", width=2, dash="dash"),
+                    mode="lines",
+                )
+            y_max_acc_2 = float(ts_eq["Executadas_Qualificadas_Acumulado"].max()) if len(ts_eq) else 0.0
+            y_meta_2 = float(meta_eq_acc.max()) if meta_eq_acc is not None else 0.0
+            fig_l2.update_yaxes(range=[0, max(1.0, y_max_acc_2, y_meta_2) * 1.12], automargin=True)
+            fig_l2.update_layout(height=line_h, margin=dict(t=20, b=10, l=0, r=0))
             style_fig(fig_l2)
             st.plotly_chart(fig_l2, use_container_width=True)
 
             # Gráfico de Barras
             fig_b2 = px.bar(ts_eq, x="Data", y="Executadas Qualificadas", text="Executadas Qualificadas")
             fig_b2.update_traces(textposition="outside", cliponaxis=False)
-            y_max_2 = max(int(ts_eq["Executadas Qualificadas"].max()), 20)
-            fig_b2.update_yaxes(range=[0, (4 * n_sdrs)*1.1])
+            y_max_2 = max(int(ts_eq["Executadas Qualificadas"].max()), 0)
+            fig_b2.update_yaxes(range=[0, max(y_max_2, (4 * n_sdrs)) * 1.2])
             fig_b2.add_hline(y=(4 * n_sdrs), line_dash="dash", line_color="#bfa94c")
+            fig_b2.update_layout(height=bar_h)
             style_fig(fig_b2)
             st.plotly_chart(fig_b2, use_container_width=True)
 
@@ -685,16 +746,32 @@ with tabs[1]:
             ts_ass["Contratos Assinados"] = ts_ass["Contratos Assinados"].fillna(0).astype(int)
             ts_ass["Contratos_Assinados_Acumulado"] = ts_ass["Contratos Assinados"].cumsum()
             fig_l3 = px.line(ts_ass, x="Data", y="Contratos_Assinados_Acumulado", markers=True)
-            fig_l3.update_traces(mode="lines+markers+text", text=ts_ass["Contratos_Assinados_Acumulado"], textposition="top center")
+            fig_l3.update_traces(mode="lines+markers+text", text=ts_ass["Contratos_Assinados_Acumulado"], textposition="top center", cliponaxis=False)
+            # Meta diária acumulada (SDRs): 1 * n_sdrs por dia
+            meta_ass_acc = None
+            if filtro_operador == "SDRs":
+                meta_ass_acc = (np.arange(1, len(idx) + 1) * (1 * n_sdrs)).astype(float)
+                fig_l3.add_scatter(
+                    x=idx,
+                    y=meta_ass_acc,
+                    name="Meta diária (acumulada)",
+                    line=dict(color="#bfa94c", width=2, dash="dash"),
+                    mode="lines",
+                )
+            y_max_acc_3 = float(ts_ass["Contratos_Assinados_Acumulado"].max()) if len(ts_ass) else 0.0
+            y_meta_3 = float(meta_ass_acc.max()) if meta_ass_acc is not None else 0.0
+            fig_l3.update_yaxes(range=[0, max(1.0, y_max_acc_3, y_meta_3) * 1.12], automargin=True)
+            fig_l3.update_layout(height=line_h, margin=dict(t=20, b=10, l=0, r=0))
             style_fig(fig_l3)
             st.plotly_chart(fig_l3, use_container_width=True)
 
             # Gráfico de Barras
             fig_b3 = px.bar(ts_ass, x="Data", y="Contratos Assinados", text="Contratos Assinados")
             fig_b3.update_traces(textposition="outside", cliponaxis=False)
-            y_max_3 = max(int(ts_ass["Contratos Assinados"].max()), 20)
-            fig_b3.update_yaxes(range=[0, (1 * n_sdrs)*1.1])
+            y_max_3 = max(int(ts_ass["Contratos Assinados"].max()), 0)
+            fig_b3.update_yaxes(range=[0, max(y_max_3, (1 * n_sdrs)) * 1.2])
             fig_b3.add_hline(y=(1 * n_sdrs), line_dash="dash", line_color="#bfa94c")
+            fig_b3.update_layout(height=bar_h)
             style_fig(fig_b3)
             st.plotly_chart(fig_b3, use_container_width=True)
     st.markdown("---")
