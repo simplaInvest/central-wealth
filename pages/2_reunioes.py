@@ -595,44 +595,70 @@ with tabs[1]:
     with cols_top[0]:
         fig_g1 = go.Figure(
             go.Indicator(
-                mode="gauge+number",
+                mode="gauge",
                 value=int(agendadas_f),
                 title={"text": "Agendadas", "font": {"size": 12}},
-                number={"font": {"size": 40}},
                 gauge={"axis": {"range": [0, meta_agendadas_sdrs]}, "bar": {"color": "#bfa94c"}},
             )
         )
-        fig_g1.update_layout(height=gauge_h, margin=dict(t=10, b=0, l=0, r=0))
+        # Anotação centralizada para exibir o número sem ser deslocado
+        fig_g1.add_annotation(
+            x=0.5,
+            y=0.25,
+            text=str(int(agendadas_f)),
+            font=dict(size=42, color="#FAFAFA"),
+            showarrow=False,
+            xref="paper",
+            yref="paper",
+        )
+        # Aplicar estilo primeiro e depois ajustar alturas/margens específicas
         style_fig(fig_g1)
+        fig_g1.update_layout(height=gauge_h, margin=dict(t=10, b=0, l=0, r=0))
         st.plotly_chart(fig_g1, use_container_width=True)
 
     with cols_top[2]:
         fig_g2 = go.Figure(
             go.Indicator(
-                mode="gauge+number",
+                mode="gauge",
                 value=int(executadas_qual_f),
                 title={"text": "Executadas Qualificadas", "font": {"size": 12}},
-                number={"font": {"size": 40}},
                 gauge={"axis": {"range": [0, meta_realizadas_sdrs]}, "bar": {"color": "#bfa94c"}},
             )
         )
-        fig_g2.update_layout(height=gauge_h, margin=dict(t=10, b=0, l=0, r=0))
+        fig_g2.add_annotation(
+            x=0.5,
+            y=0.25,
+            text=str(int(executadas_qual_f)),
+            font=dict(size=42, color="#FAFAFA"),
+            showarrow=False,
+            xref="paper",
+            yref="paper",
+        )
         style_fig(fig_g2)
+        fig_g2.update_layout(height=gauge_h, margin=dict(t=10, b=0, l=0, r=0))
         st.plotly_chart(fig_g2, use_container_width=True)
 
     with cols_top[4]:
         assinados_f = (reunioes_f["contrato"] == "Contrato Assinado").sum()
         fig_g3 = go.Figure(
             go.Indicator(
-                mode="gauge+number",
+                mode="gauge",
                 value=int(assinados_f),
                 title={"text": "Contratos Assinados", "font": {"size": 12}},
-                number={"font": {"size": 40}},
                 gauge={"axis": {"range": [0, meta_assinados_sdrs]}, "bar": {"color": "#bfa94c"}},
             )
         )
-        fig_g3.update_layout(height=gauge_h, margin=dict(t=10, b=0, l=0, r=0))
+        fig_g3.add_annotation(
+            x=0.5,
+            y=0.25,
+            text=str(int(assinados_f)),
+            font=dict(size=42, color="#FAFAFA"),
+            showarrow=False,
+            xref="paper",
+            yref="paper",
+        )
         style_fig(fig_g3)
+        fig_g3.update_layout(height=gauge_h, margin=dict(t=10, b=0, l=0, r=0))
         st.plotly_chart(fig_g3, use_container_width=True)
 
     conv_exec = _pct(executadas_qual_f, agendadas_f)
