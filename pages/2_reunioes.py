@@ -10,6 +10,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime, date, timedelta
 import calendar
+import textwrap
 
 # ------------------------------------------------------------
 # CONFIGURAÇÕES DA PÁGINA
@@ -71,6 +72,7 @@ SHEET_URL_DEFAULT = (
 )
 TAB_CONSULTOR = "CONSULTOR"
 TAB_SDR = "SDR"
+TAB_EQUIPE = "EQUIPE"
 
 # ------------------------------------------------------------
 # FUNÇÕES AUXILIARES
@@ -105,18 +107,58 @@ def find_column_by_patterns(df: pd.DataFrame, patterns: list[str]) -> str | None
             return col
     return None
 
-
 def get_role_column(df: pd.DataFrame, canonical: str) -> str | None:
-    """Detecta automaticamente o nome da coluna que representa SDR ou Consultor."""
-    if canonical in df.columns:
-        return canonical
-    patterns = (
-        ["sdr", "responsavel", "responsável", "criador", "owner", "agendador", "pré-vendas", "pre_vendas"]
-        if canonical == "sdr"
-        else ["consultor", "closer", "responsavel_consultor", "responsável consultor"]
-    )
-    return find_column_by_patterns(df, patterns)
-
+    if df is None or df.empty:
+        return None
+    can = _slugify(canonical)
+    cols = list(df.columns)
+    # mapeamento direto por nomes de colunas fornecidos
+    def _resolve(colname: str) -> str | None:
+        if colname in cols:
+            return colname
+        slug = _slugify(colname)
+        if slug in cols:
+            return slug
+        return None
+    if can == "sdr":
+        col = _resolve("nome_do_sdr")
+        if col:
+            return col
+    else:  # consultor
+        # df_consultor
+        col = _resolve("nome_do_consultor")
+        if col:
+            return col
+        # df_sdr
+        col = _resolve("nome_do_consultor_closer")
+        if col:
+            return col
+    if can in cols:
+        return can
+    def score(cslug: str, role: str) -> int:
+        s = 0
+        if role == "sdr":
+            primary = ["sdr","agendador","pre_vendas","pre-vendas","pré-vendas","responsavel_sdr","sdr_responsavel"]
+            fallback = ["responsavel","owner","criador","agendamento","agendamentos","pre_venda"]
+        else:
+            primary = ["consultor","closer","responsavel_consultor","consultor_responsavel"]
+            fallback = ["responsavel","owner","dono_conta"]
+        for p in primary:
+            if p in cslug:
+                s += 3
+        for p in fallback:
+            if p in cslug:
+                s += 1
+        return s
+    best_col = None
+    best_score = 0
+    for col in cols:
+        cslug = _slugify(col)
+        sc = score(cslug, can)
+        if sc > best_score:
+            best_score = sc
+            best_col = col
+    return best_col
 
 @st.cache_data(ttl=900, show_spinner=False)
 def load_worksheet(url: str, tab_name: str) -> pd.DataFrame:
@@ -137,21 +179,27 @@ def ensure_session_data():
         with st.spinner("🔄 Carregando planilhas do Google Sheets..."):
             df_consultor = load_worksheet(SHEET_URL_DEFAULT, TAB_CONSULTOR)
             df_sdr = load_worksheet(SHEET_URL_DEFAULT, TAB_SDR)
+            df_equipe = load_worksheet(SHEET_URL_DEFAULT, TAB_EQUIPE)
             st.session_state["reunioes_consultor"] = df_consultor
             st.session_state["reunioes_sdr"] = df_sdr
+            st.session_state["equipe"] = df_equipe
             ts_cons = df_consultor.attrs.get("loaded_at")
             ts_sdr = df_sdr.attrs.get("loaded_at")
-            st.session_state["sheets_last_update_at"] = max(ts_cons, ts_sdr) if ts_cons and ts_sdr else (ts_cons or ts_sdr or datetime.now())
+            ts_equipe = df_equipe.attrs.get("loaded_at")
+            st.session_state["sheets_last_update_at"] = max(ts_cons, ts_sdr, ts_equipe) if ts_cons and ts_sdr and ts_equipe else (ts_cons or ts_sdr or ts_equipe or datetime.now())
 
-        if "reunioes_consultor_raw" not in st.session_state or "reunioes_sdr_raw" not in st.session_state:
+        if "reunioes_consultor_raw" not in st.session_state or "reunioes_sdr_raw" not in st.session_state or "equipe_raw" not in st.session_state:
             gc = _get_gspread_client()
             sh = gc.open_by_url(SHEET_URL_DEFAULT)
             ws_cons = sh.worksheet(TAB_CONSULTOR)
             ws_sdr = sh.worksheet(TAB_SDR)
+            ws_equipe = sh.worksheet(TAB_EQUIPE)
             df_cons_raw = pd.DataFrame(ws_cons.get_all_records())
             df_sdr_raw = pd.DataFrame(ws_sdr.get_all_records())
+            df_equipe_raw = pd.DataFrame(ws_equipe.get_all_records())
             st.session_state["reunioes_consultor_raw"] = df_cons_raw
             st.session_state["reunioes_sdr_raw"] = df_sdr_raw
+            st.session_state["equipe_raw"] = df_equipe_raw
         st.success("✅ Planilhas carregadas com sucesso.")
     except Exception as e:
         st.error(f"Erro ao carregar planilhas: {e}")
@@ -245,6 +293,7 @@ def _by_day(df: pd.DataFrame, date_col: str | None, mask: pd.Series | None, name
 ensure_session_data()
 df_consultor = st.session_state["reunioes_consultor"].copy()
 df_sdr = st.session_state["reunioes_sdr"].copy()
+df_equipe = st.session_state["equipe"].copy()
 
 # Normalizações básicas
 if "status_reuniao" in df_consultor.columns:
@@ -312,8 +361,8 @@ with st.expander("🔎 Filtros", expanded=False):
         # Seletores de pessoas
         sdr_col_sidebar = get_role_column(df_sdr, "sdr")
         consultor_col_sidebar = get_role_column(df_consultor, "consultor")
-        sdrs = sorted(df_sdr[sdr_col_sidebar].dropna().unique().tolist()) if sdr_col_sidebar else []
-        consultores = sorted(df_consultor[consultor_col_sidebar].dropna().unique().tolist()) if consultor_col_sidebar else []
+        sdrs = df_equipe[df_equipe["cargo"] == "SDR"]["nome"].tolist()
+        consultores = df_equipe[df_equipe["cargo"] == "Consultor"]["nome"].tolist()
 
         with col4:
             f_sdr = st.multiselect("SDR", sdrs)
@@ -507,78 +556,148 @@ with tabs[0]:
 # ------------------------------------------------------------
 with tabs[1]:
     st.subheader("Evolução Diária")
-    opcoes_evolucao = [
-        "🗓️ Agendadas",
-        "Executadas Qualificadas",
-        "Executadas Não Qualificadas",
-        "Remarcadas",
-        "No-Show",
-        "Perdeu",
-        "🔜 Futuras",
-        "📄 Contratos (Env/Ass)",
-    ]
-    variavel = st.selectbox("Variável", opcoes_evolucao, index=0)
+    idx = pd.bdate_range(data_ini, data_fim)
 
-    # Série diária apenas nesta aba
-    idx = pd.date_range(data_ini, data_fim, freq="D")
-    ts = pd.DataFrame({"Data": idx})
+    sdr_only_agendamentos = sdr_f[(sdr_f["nome_do_sdr"].notna()) & (sdr_f["nome_do_sdr"] != "Consultor (eu mesmo)")]
+    agendadas_sdrs = len(sdr_only_agendamentos)
+    sdr_only_feedbacks = cons_f[(cons_f["nome_do_sdr"].notna()) & (cons_f["nome_do_sdr"] != "Consultor (eu mesmo)")]
 
-    if variavel == "🗓️ Agendadas":
-        serie = _by_day(sdr_f, sdr_date_col, None, "Agendadas")
-        ts = ts.merge(serie.rename_axis("Data").reset_index(), on="Data", how="left")
-    elif variavel == "Executadas Qualificadas":
-        mask = (cons_f["status_da_reuniao"] == "Executada Qualificada") if "status_da_reuniao" in cons_f.columns else None
-        serie = _by_day(cons_f, cons_date_col, mask, "Executadas Qualificadas")
-        ts = ts.merge(serie.rename_axis("Data").reset_index(), on="Data", how="left")
-    elif variavel == "Executadas Não Qualificadas":
-        mask = (cons_f["status_da_reuniao"] == "Executada não Qualificada") if "status_da_reuniao" in cons_f.columns else None
-        serie = _by_day(cons_f, cons_date_col, mask, "Executadas Não Qualificadas")
-        ts = ts.merge(serie.rename_axis("Data").reset_index(), on="Data", how="left")
-    elif variavel == "Remarcadas":
-        mask = (cons_f["status_da_reuniao"] == "Remarcada") if "status_da_reuniao" in cons_f.columns else None
-        serie = _by_day(cons_f, cons_date_col, mask, "Remarcadas")
-        ts = ts.merge(serie.rename_axis("Data").reset_index(), on="Data", how="left")
-    elif variavel == "No-Show":
-        mask = (cons_f["status_da_reuniao"] == "No-Show") if "status_da_reuniao" in cons_f.columns else None
-        serie = _by_day(cons_f, cons_date_col, mask, "No-Show")
-        ts = ts.merge(serie.rename_axis("Data").reset_index(), on="Data", how="left")
-    elif variavel == "Perdeu":
-        mask = (cons_f["status_reuniao_norm"] == "Perdeu") if "status_reuniao_norm" in cons_f.columns else None
-        serie = _by_day(cons_f, cons_date_col, mask, "Perdeu")
-        ts = ts.merge(serie.rename_axis("Data").reset_index(), on="Data", how="left")
-    elif variavel == "🔜 Futuras":
-        mask = (cons_f["contrato"] == "Futuro") if "contrato" in cons_f.columns else None
-        serie = _by_day(cons_f, cons_date_col, mask, "Futuras")
-        ts = ts.merge(serie.rename_axis("Data").reset_index(), on="Data", how="left")
-    elif variavel == "📄 Contratos (Env/Ass)":
-        mask_env = (cons_f["contrato"] == "Contrato Enviado (Em negociação)") if "contrato" in cons_f.columns else None
-        mask_ass = (cons_f["contrato"] == "Contrato Assinado") if "contrato" in cons_f.columns else None
-        serie_env = _by_day(cons_f, cons_date_col, mask_env, "Contratos Enviados")
-        serie_ass = _by_day(cons_f, cons_date_col, mask_ass, "Contratos Assinados")
-        ts = ts.merge(serie_env.rename_axis("Data").reset_index(), on="Data", how="left")
-        ts = ts.merge(serie_ass.rename_axis("Data").reset_index(), on="Data", how="left")
+    cons_only_agendamentos = sdr_f[(sdr_f["nome_do_sdr"].notna()) & (sdr_f["nome_do_sdr"] == "Consultor (eu mesmo)")]
+    agendadas_cons = len(cons_only_agendamentos)
+    cons_only_feedbacks = cons_f[(cons_f["nome_do_sdr"].notna()) & (cons_f["nome_do_sdr"] == "Consultor (eu mesmo)")]
 
-    for c in ts.columns:
-        if c != "Data":
-            ts[c] = ts[c].fillna(0).astype(int)
+    filtro_operador = st.radio("Filtrar por:", ["SDRs", "Consultores"], horizontal=True)
 
-    ycols = [c for c in ts.columns if c != "Data"]
-    if ycols:
-        fig = px.line(ts, x="Data", y=ycols, markers=True)
-        for i, yname in enumerate(ycols):
-            fig.data[i].text = ts[yname]
-            fig.data[i].textposition = "top center"
-        fig.update_traces(mode="lines+markers+text")
-        style_fig(fig)
-        st.plotly_chart(fig, use_container_width=True)
+    if filtro_operador == "SDRs":
+        agendadas_f = agendadas_sdrs
+        only_f = sdr_only_agendamentos
+        reunioes_f = sdr_only_feedbacks
+        executadas_qual_f = (reunioes_f["status_da_reuniao"] == "Executada Qualificada").sum() if "status_da_reuniao" in reunioes_f.columns else 0
     else:
-        st.info("Sem séries para exibir no período selecionado.")
-    st.markdown("---")
+        agendadas_f = agendadas_cons
+        only_f = cons_only_agendamentos
+        reunioes_f = cons_only_feedbacks
+        executadas_qual_f = (reunioes_f["status_da_reuniao"] == "Executada Qualificada").sum() if "status_da_reuniao" in reunioes_f.columns else 0
+    
+    # Métricas globais para metas
+    n_sdrs = df_equipe[df_equipe['cargo'] == 'SDR'].shape[0]
+    dias_uteis = len(pd.bdate_range(data_ini, data_fim))
+    meta_agendadas_sdrs = 7 * n_sdrs * dias_uteis
+    meta_realizadas_sdrs = 4 * n_sdrs * dias_uteis
+    meta_assinados_sdrs = 1 * n_sdrs * dias_uteis
 
-# ------------------------------------------------------------
-# STATUS DA REUNIÃO (Pizza)
-# ------------------------------------------------------------
-# (Removido: distribuição por status fora das abas; mantida na aba Funil)
+    # Linha 1: apenas velocímetros (3 colunas)
+    g1, g2, g3 = st.columns(3)
+    with g1:
+        fig_g1 = go.Figure(go.Indicator(mode="gauge+number", value=int(agendadas_f), title={"text": "Agendadas"}, gauge={"axis": {"range": [0, meta_agendadas_sdrs]}, "bar": {"color": "#bfa94c"}}))
+        style_fig(fig_g1)
+        st.plotly_chart(fig_g1, use_container_width=True)
+
+    with g2:
+        fig_g2 = go.Figure(go.Indicator(mode="gauge+number", value=int(executadas_qual_f), title={"text": "Executadas Qualificadas"}, gauge={"axis": {"range": [0, meta_realizadas_sdrs]}, "bar": {"color": "#bfa94c"}}))
+        style_fig(fig_g2)
+        st.plotly_chart(fig_g2, use_container_width=True)
+
+    with g3:
+        assinados_f = (reunioes_f["contrato"] == "Contrato Assinado").sum()
+        fig_g3 = go.Figure(go.Indicator(mode="gauge+number", value=int(assinados_f), title={"text": "Contratos Assinados"}, gauge={"axis": {"range": [0, meta_assinados_sdrs]}, "bar": {"color": "#bfa94c"}}))
+        style_fig(fig_g3)
+        st.plotly_chart(fig_g3, use_container_width=True)
+
+    # Linha 2: conversões posicionadas exatamente sob os gaps entre velocímetros
+    conv_exec = _pct(executadas_qual_f, agendadas_f)
+    conv_env = _pct(assinados_f, executadas_qual_f)
+    gap_cols = st.columns([1, 0.28, 1, 0.28, 1])  # colunas estreitas nos gaps
+    with gap_cols[1]:
+        st.markdown(
+            f"""
+            <div class='metric-card'>
+                <div class='metric-title'>Execução</div>
+                <div class='metric-value'>{conv_exec:.1f}%</div>
+                <div class='metric-sub'>Ag → Qualif</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with gap_cols[3]:
+        st.markdown(
+            f"""
+            <div class='metric-card'>
+                <div class='metric-title'>Assinado</div>
+                <div class='metric-value'>{conv_env:.1f}%</div>
+                <div class='metric-sub'>Qualif → Assinados</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    
+    # Linha 3: gráficos (3 colunas)
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        # Gráfico de Linha Acumulado
+        serie_ag = _by_day(only_f, sdr_date_col, None, "Agendadas")
+        ts_ag = pd.DataFrame({"Data": idx}).merge(serie_ag.rename_axis("Data").reset_index(), on="Data", how="left")
+        if "Agendadas" in ts_ag.columns:
+            ts_ag["Agendadas"] = ts_ag["Agendadas"].fillna(0).astype(int)
+            ts_ag["Agendadas_Acumulado"] = ts_ag["Agendadas"].cumsum()
+            fig_l1 = px.line(ts_ag, x="Data", y="Agendadas_Acumulado", markers=True)
+            fig_l1.update_traces(mode="lines+markers+text", text=ts_ag["Agendadas_Acumulado"], textposition="top center")
+            style_fig(fig_l1)
+            st.plotly_chart(fig_l1, use_container_width=True)
+
+            # Gráfico de Barras
+            fig_b1 = px.bar(ts_ag, x="Data", y="Agendadas", text="Agendadas")
+            fig_b1.update_traces(textposition="outside", cliponaxis=False)
+            y_max_1 = max(int(ts_ag["Agendadas"].max()), 20)
+            fig_b1.update_yaxes(range=[0, (7 * n_sdrs)*1.1])
+            fig_b1.add_hline(y=(7 * n_sdrs), line_dash="dash", line_color="#bfa94c")
+            style_fig(fig_b1)
+            st.plotly_chart(fig_b1, use_container_width=True)
+
+    with c2:
+        # Gráfico de Linha Acumulado
+        mask_eq = (reunioes_f["status_da_reuniao"] == "Executada Qualificada") if "status_da_reuniao" in reunioes_f.columns else None
+        serie_eq = _by_day(reunioes_f, cons_date_col, mask_eq, "Executadas Qualificadas")
+        ts_eq = pd.DataFrame({"Data": idx}).merge(serie_eq.rename_axis("Data").reset_index(), on="Data", how="left")
+        if "Executadas Qualificadas" in ts_eq.columns:
+            ts_eq["Executadas Qualificadas"] = ts_eq["Executadas Qualificadas"].fillna(0).astype(int)
+            ts_eq["Executadas_Qualificadas_Acumulado"] = ts_eq["Executadas Qualificadas"].cumsum()
+            fig_l2 = px.line(ts_eq, x="Data", y="Executadas_Qualificadas_Acumulado", markers=True)
+            fig_l2.update_traces(mode="lines+markers+text", text=ts_eq["Executadas_Qualificadas_Acumulado"], textposition="top center")
+            style_fig(fig_l2)
+            st.plotly_chart(fig_l2, use_container_width=True)
+
+            # Gráfico de Barras
+            fig_b2 = px.bar(ts_eq, x="Data", y="Executadas Qualificadas", text="Executadas Qualificadas")
+            fig_b2.update_traces(textposition="outside", cliponaxis=False)
+            y_max_2 = max(int(ts_eq["Executadas Qualificadas"].max()), 20)
+            fig_b2.update_yaxes(range=[0, (4 * n_sdrs)*1.1])
+            fig_b2.add_hline(y=(4 * n_sdrs), line_dash="dash", line_color="#bfa94c")
+            style_fig(fig_b2)
+            st.plotly_chart(fig_b2, use_container_width=True)
+
+    with c3:
+        # Gráfico de Linha Acumulado
+        mask_ass = (reunioes_f["contrato"] == "Contrato Assinado") if "contrato" in reunioes_f.columns else None
+        serie_ass = _by_day(reunioes_f, cons_date_col, mask_ass, "Contratos Assinados")
+        ts_ass = pd.DataFrame({"Data": idx}).merge(serie_ass.rename_axis("Data").reset_index(), on="Data", how="left")
+        if "Contratos Assinados" in ts_ass.columns:
+            ts_ass["Contratos Assinados"] = ts_ass["Contratos Assinados"].fillna(0).astype(int)
+            ts_ass["Contratos_Assinados_Acumulado"] = ts_ass["Contratos Assinados"].cumsum()
+            fig_l3 = px.line(ts_ass, x="Data", y="Contratos_Assinados_Acumulado", markers=True)
+            fig_l3.update_traces(mode="lines+markers+text", text=ts_ass["Contratos_Assinados_Acumulado"], textposition="top center")
+            style_fig(fig_l3)
+            st.plotly_chart(fig_l3, use_container_width=True)
+
+            # Gráfico de Barras
+            fig_b3 = px.bar(ts_ass, x="Data", y="Contratos Assinados", text="Contratos Assinados")
+            fig_b3.update_traces(textposition="outside", cliponaxis=False)
+            y_max_3 = max(int(ts_ass["Contratos Assinados"].max()), 20)
+            fig_b3.update_yaxes(range=[0, (1 * n_sdrs)*1.1])
+            fig_b3.add_hline(y=(1 * n_sdrs), line_dash="dash", line_color="#bfa94c")
+            style_fig(fig_b3)
+            st.plotly_chart(fig_b3, use_container_width=True)
+    st.markdown("---")
 
 # ------------------------------------------------------------
 # PERFORMANCE POR SDR / CONSULTOR
@@ -728,6 +847,63 @@ with tabs[2]:
             st.dataframe(grp, use_container_width=True, hide_index=True)
         else:
             st.info("Coluna Consultor não encontrada na planilha.")
+
+    st.divider()
+    st.subheader("☎️ **Ranking de SDRs**")
+    
+    rows = []
+    for sdr in sdrs:
+        sdr_reunioes = sdr_f.loc[sdr_f["nome_do_sdr"].eq(sdr)].shape[0]
+        sdr_n_qual = cons_f.loc[cons_f["nome_do_sdr"].eq(sdr) & cons_f["status_da_reuniao"].eq("Executada Qualificada")].shape[0]
+        sdr_n_cont = cons_f.loc[cons_f["nome_do_sdr"].eq(sdr) & cons_f["contrato"].eq("Contrato Assinado")].shape[0]
+
+        rows.append({
+            "SDR": sdr,
+            "Reuniões Marcadas": sdr_reunioes,
+            "Reuniões Qualificadas": sdr_n_qual,
+            "Contratos Assinados": sdr_n_cont,
+            "Conv Ag→Qualif (%)": (round((sdr_n_qual / sdr_reunioes * 100), 1) if sdr_reunioes > 0 else 0.0),
+            "Conv Qualif→Contrato (%)": (round((sdr_n_cont / sdr_n_qual * 100), 1) if sdr_n_qual > 0 else 0.0),
+        })
+
+    sdr_ranking = pd.DataFrame(rows)
+    # adicionar conversão total Ag→Contrato e ordenar desc
+    sdr_ranking["Conv Ag→Contrato (%)"] = np.where(
+        sdr_ranking["Reuniões Marcadas"] > 0,
+        (sdr_ranking["Contratos Assinados"] / sdr_ranking["Reuniões Marcadas"]) * 100,
+        0.0,
+    ).round(1)
+    sdr_ranking = sdr_ranking.sort_values(by="Conv Ag→Contrato (%)", ascending=False).reset_index(drop=True)
+
+    # renderização em cards
+    html = ["<div class='ranking-grid'>"]
+    for i, row in sdr_ranking.iterrows():
+        title = row["SDR"]
+        ag = int(row["Reuniões Marcadas"]) if not pd.isna(row["Reuniões Marcadas"]) else 0
+        qual = int(row["Reuniões Qualificadas"]) if not pd.isna(row["Reuniões Qualificadas"]) else 0
+        cont = int(row["Contratos Assinados"]) if not pd.isna(row["Contratos Assinados"]) else 0
+        conv_ag_qual = float(row["Conv Ag→Qualif (%)"]) if not pd.isna(row["Conv Ag→Qualif (%)"]) else 0.0
+        conv_qual_cont = float(row["Conv Qualif→Contrato (%)"]) if not pd.isna(row["Conv Qualif→Contrato (%)"]) else 0.0
+        conv_total = float(row["Conv Ag→Contrato (%)"]) if not pd.isna(row["Conv Ag→Contrato (%)"]) else 0.0
+        card = textwrap.dedent(f"""
+        <div class='ranking-card'>
+          <div class='rank'>#{i+1}</div>
+          <div class='title'>{title}</div>
+          <div class='progress'><div class='fill' style='width:{conv_total}%;'></div></div>
+          <div class='metrics'>
+            <div class='item'><span class='label'>Agendadas</span><span class='value'>{ag}</span></div>
+            <div class='item'><span class='label'>Conv Ag→Qualif</span><span class='value'>{conv_ag_qual:.1f}%</span></div>
+            <div class='item'><span class='label'>Qualificadas</span><span class='value'>{qual}</span></div>
+            <div class='item'><span class='label'>Conv Qualif→Contrato</span><span class='value'>{conv_qual_cont:.1f}%</span></div>
+            <div class='item'><span class='label'>Contratos</span><span class='value'>{cont}</span></div>
+            <div class='item'><span class='label'>Conv Total</span><span class='value'>{conv_total:.1f}%</span></div>
+          </div>
+        </div>
+        """).strip()
+        html.append(card)
+    html.append("</div>")
+    st.markdown("\n".join(html), unsafe_allow_html=True)
+
 
 with tabs[3]:
     st.subheader("Pipeline de Contratos")

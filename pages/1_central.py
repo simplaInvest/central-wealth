@@ -15,6 +15,10 @@ st.set_page_config(page_title="Central", page_icon="📊", layout="wide")
 st.logo(image='assets/z_logo_light.png', size='large')
 st.write(""); st.write(""); st.write("")
 
+if "authenticated" not in st.session_state or not st.session_state.authenticated:
+    st.error("Você precisa estar logado para acessar esta página.")
+    st.stop()
+
 # Título
 st.title("📊 Central")
 
@@ -56,15 +60,12 @@ hist_custodia = pd.DataFrame(dados_historico["histórico custódia"])
 hist_clientes = pd.DataFrame(dados_historico["histórico clientes"]) 
 hist_captacao = pd.DataFrame(dados_historico["histórico captação"])
 
-# exemplo de delta (pega penúltimo valor de CAPTACAO)
-delta_capt_total = float(hist_captacao['CAPTACAO'].iloc[-2])
 
 with metrics_cols[0]:
     st.metric(
         label="Custódia Total",
         value=formata_milhoes_brl(v_total),
         help="Custódia todas as corretoras + externo",
-        delta=formata_delta_milhoes_brl(delta_capt_total),
         border=True
     )
 
@@ -111,7 +112,7 @@ with grafs_cols[0]:
     fig, df_plot = bar_chart(
         hist_captacao,
         date_col="DATA",
-        value_col="CAPTACAO",
+        value_col="TOTAL",
         title="Captação Mês a Mês",
         bar_color="#C9A227",       # dourado
         secondary_color="#FFFFFF", # branco
