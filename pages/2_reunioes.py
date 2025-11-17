@@ -558,7 +558,7 @@ with tabs[1]:
     st.subheader("Evolução Diária")
     idx = pd.bdate_range(data_ini, data_fim)
     # Alturas ampliadas para aproveitar mais espaço vertical disponível
-    gauge_h = 270
+    gauge_h = 240
     line_h = 340
     bar_h = 340
 
@@ -604,16 +604,16 @@ with tabs[1]:
         # Anotação centralizada para exibir o número sem ser deslocado
         fig_g1.add_annotation(
             x=0.5,
-            y=0.25,
+            y=0.26,
             text=str(int(agendadas_f)),
-            font=dict(size=42, color="#FAFAFA"),
+            font=dict(size=38, color="#FAFAFA"),
             showarrow=False,
             xref="paper",
             yref="paper",
         )
         # Aplicar estilo primeiro e depois ajustar alturas/margens específicas
         style_fig(fig_g1)
-        fig_g1.update_layout(height=gauge_h, margin=dict(t=10, b=0, l=0, r=0))
+        fig_g1.update_layout(height=gauge_h, margin=dict(t=28, b=4, l=0, r=0))
         st.plotly_chart(fig_g1, use_container_width=True)
 
     with cols_top[2]:
@@ -627,15 +627,15 @@ with tabs[1]:
         )
         fig_g2.add_annotation(
             x=0.5,
-            y=0.25,
+            y=0.26,
             text=str(int(executadas_qual_f)),
-            font=dict(size=42, color="#FAFAFA"),
+            font=dict(size=38, color="#FAFAFA"),
             showarrow=False,
             xref="paper",
             yref="paper",
         )
         style_fig(fig_g2)
-        fig_g2.update_layout(height=gauge_h, margin=dict(t=10, b=0, l=0, r=0))
+        fig_g2.update_layout(height=gauge_h, margin=dict(t=28, b=4, l=0, r=0))
         st.plotly_chart(fig_g2, use_container_width=True)
 
     with cols_top[4]:
@@ -650,15 +650,15 @@ with tabs[1]:
         )
         fig_g3.add_annotation(
             x=0.5,
-            y=0.25,
+            y=0.26,
             text=str(int(assinados_f)),
-            font=dict(size=42, color="#FAFAFA"),
+            font=dict(size=38, color="#FAFAFA"),
             showarrow=False,
             xref="paper",
             yref="paper",
         )
         style_fig(fig_g3)
-        fig_g3.update_layout(height=gauge_h, margin=dict(t=10, b=0, l=0, r=0))
+        fig_g3.update_layout(height=gauge_h, margin=dict(t=28, b=4, l=0, r=0))
         st.plotly_chart(fig_g3, use_container_width=True)
 
     conv_exec = _pct(executadas_qual_f, agendadas_f)
