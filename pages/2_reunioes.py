@@ -355,8 +355,6 @@ try:
 except Exception as e:
     st.warning(f"Falha ao executar join de contratos por telefone: {e}")
 
-st.dataframe(df_consultor)
-
 # Normalizações básicas
 if "status_reuniao" in df_consultor.columns:
     df_consultor["status_reuniao_norm"] = df_consultor["status_reuniao"].apply(label_status)
