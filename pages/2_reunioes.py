@@ -70,9 +70,13 @@ with st.sidebar:
 SHEET_URL_DEFAULT = (
     "https://docs.google.com/spreadsheets/d/1aRjUMdsk9kasJgsQYBMi4LeawC9iQbXe7L_BANqjPjA/edit?usp=sharing"
 )
+SHEET_URL_CONTRATOS = (
+    "https://docs.google.com/spreadsheets/d/1LMC9-EU5d7KB_ngFhjvmS62EJw7fWdv00cABSrbVU54/edit?usp=sharing"
+)
 TAB_CONSULTOR = "CONSULTOR"
 TAB_SDR = "SDR"
 TAB_EQUIPE = "EQUIPE"
+TAB_CONTRATOS = "TUDO"
 
 # ------------------------------------------------------------
 # FUNÇÕES AUXILIARES
@@ -86,7 +90,6 @@ def _get_gspread_client():
     creds = Credentials.from_service_account_info(sa_info, scopes=scopes)
     return gspread.authorize(creds)
 
-
 def _slugify(s: str) -> str:
     s = str(s).strip()
     s = unicodedata.normalize("NFKD", s)
@@ -94,7 +97,6 @@ def _slugify(s: str) -> str:
     s = s.lower()
     s = re.sub(r"[^a-z0-9]+", "_", s)
     return s.strip("_")
-
 
 def find_column_by_patterns(df: pd.DataFrame, patterns: list[str]) -> str | None:
     """Retorna o primeiro nome de coluna cujo slug contém qualquer um dos padrões."""
@@ -106,6 +108,18 @@ def find_column_by_patterns(df: pd.DataFrame, patterns: list[str]) -> str | None
         if any(p in cslug for p in pats):
             return col
     return None
+
+def _normalize_phone(x: str | int | float | None) -> str | None:
+    """Normaliza telefone seguindo duas regras:
+    1) remove espaços e caracteres especiais (+, -, (), etc.)
+    2) se houver mais de 11 dígitos, mantém apenas os 11 últimos
+    """
+    if x is None or (isinstance(x, float) and pd.isna(x)):
+        return None
+    s = re.sub(r"\D", "", str(x))  # 1) remove tudo que não é dígito
+    if len(s) > 11:
+        s = s[-11:]  # 2) mantém os 11 últimos
+    return s or None
 
 def get_role_column(df: pd.DataFrame, canonical: str) -> str | None:
     if df is None or df.empty:
@@ -173,33 +187,52 @@ def load_worksheet(url: str, tab_name: str) -> pd.DataFrame:
     df.attrs["loaded_at"] = datetime.now()
     return df
 
-
 def ensure_session_data():
     try:
         with st.spinner("🔄 Carregando planilhas do Google Sheets..."):
             df_consultor = load_worksheet(SHEET_URL_DEFAULT, TAB_CONSULTOR)
             df_sdr = load_worksheet(SHEET_URL_DEFAULT, TAB_SDR)
             df_equipe = load_worksheet(SHEET_URL_DEFAULT, TAB_EQUIPE)
+            df_contratos = load_worksheet(SHEET_URL_CONTRATOS, TAB_CONTRATOS)
             st.session_state["reunioes_consultor"] = df_consultor
             st.session_state["reunioes_sdr"] = df_sdr
             st.session_state["equipe"] = df_equipe
+            st.session_state["contratos"] = df_contratos
+
             ts_cons = df_consultor.attrs.get("loaded_at")
             ts_sdr = df_sdr.attrs.get("loaded_at")
             ts_equipe = df_equipe.attrs.get("loaded_at")
-            st.session_state["sheets_last_update_at"] = max(ts_cons, ts_sdr, ts_equipe) if ts_cons and ts_sdr and ts_equipe else (ts_cons or ts_sdr or ts_equipe or datetime.now())
+            ts_contratos = df_contratos.attrs.get("loaded_at")
 
-        if "reunioes_consultor_raw" not in st.session_state or "reunioes_sdr_raw" not in st.session_state or "equipe_raw" not in st.session_state:
+            st.session_state["sheets_last_update_at"] = (
+                max(ts_cons, ts_sdr, ts_equipe, ts_contratos)
+                if ts_cons and ts_sdr and ts_equipe and ts_contratos
+                else (ts_cons or ts_sdr or ts_equipe or ts_contratos or datetime.now())
+            )
+
+        if (
+            "reunioes_consultor_raw" not in st.session_state
+            or "reunioes_sdr_raw" not in st.session_state
+            or "equipe_raw" not in st.session_state
+            or "contratos_raw" not in st.session_state
+        ):
             gc = _get_gspread_client()
-            sh = gc.open_by_url(SHEET_URL_DEFAULT)
-            ws_cons = sh.worksheet(TAB_CONSULTOR)
-            ws_sdr = sh.worksheet(TAB_SDR)
-            ws_equipe = sh.worksheet(TAB_EQUIPE)
+            # Planilha padrão (CONSULTOR, SDR, EQUIPE)
+            sh_default = gc.open_by_url(SHEET_URL_DEFAULT)
+            ws_cons = sh_default.worksheet(TAB_CONSULTOR)
+            ws_sdr = sh_default.worksheet(TAB_SDR)
+            ws_equipe = sh_default.worksheet(TAB_EQUIPE)
+            # Planilha de contratos (aba TUDO)
+            sh_contratos = gc.open_by_url(SHEET_URL_CONTRATOS)
+            ws_contratos = sh_contratos.worksheet(TAB_CONTRATOS)
             df_cons_raw = pd.DataFrame(ws_cons.get_all_records())
             df_sdr_raw = pd.DataFrame(ws_sdr.get_all_records())
             df_equipe_raw = pd.DataFrame(ws_equipe.get_all_records())
+            df_contratos_raw = pd.DataFrame(ws_contratos.get_all_records())
             st.session_state["reunioes_consultor_raw"] = df_cons_raw
             st.session_state["reunioes_sdr_raw"] = df_sdr_raw
             st.session_state["equipe_raw"] = df_equipe_raw
+            st.session_state["contratos_raw"] = df_contratos_raw
         st.success("✅ Planilhas carregadas com sucesso.")
     except Exception as e:
         st.error(f"Erro ao carregar planilhas: {e}")
@@ -294,6 +327,35 @@ ensure_session_data()
 df_consultor = st.session_state["reunioes_consultor"].copy()
 df_sdr = st.session_state["reunioes_sdr"].copy()
 df_equipe = st.session_state["equipe"].copy()
+df_contratos = st.session_state["contratos"].copy()
+
+
+# Join de status de contratos no df_consultor via telefone normalizado
+try:
+    cons_phone_col = (
+        "contato_do_lead_ex_55xx999123456"
+        if "contato_do_lead_ex_55xx999123456" in df_consultor.columns
+        else find_column_by_patterns(df_consultor, ["contato", "telefone", "celular", "numero", "número"])
+    )
+    contratos_phone_col = "numero" if "numero" in df_contratos.columns else find_column_by_patterns(df_contratos, ["numero", "número", "telefone", "celular"])
+    contratos_status_col = "status" if "status" in df_contratos.columns else find_column_by_patterns(df_contratos, ["status", "contrato_status"]) 
+
+    if cons_phone_col and contratos_phone_col and contratos_status_col:
+        df_consultor["__phone_norm__"] = df_consultor[cons_phone_col].apply(_normalize_phone)
+        df_contratos["__phone_norm__"] = df_contratos[contratos_phone_col].apply(_normalize_phone)
+        status_map = (
+            df_contratos[["__phone_norm__", contratos_status_col]]
+            .dropna(subset=["__phone_norm__"])
+            .drop_duplicates("__phone_norm__")
+            .set_index("__phone_norm__")[contratos_status_col]
+        )
+        df_consultor["status_contratos"] = df_consultor["__phone_norm__"].map(status_map)
+    else:
+        st.warning("Não foi possível identificar colunas de telefone/status para realizar o join de contratos.")
+except Exception as e:
+    st.warning(f"Falha ao executar join de contratos por telefone: {e}")
+
+st.dataframe(df_consultor)
 
 # Normalizações básicas
 if "status_reuniao" in df_consultor.columns:
@@ -306,6 +368,8 @@ else:
 
 if "contrato_status" in df_consultor.columns:
     df_consultor["contrato_status_norm"] = df_consultor["contrato_status"].apply(label_contrato)
+elif "status_contratos" in df_consultor.columns and df_consultor["status_contratos"].notna().any():
+    df_consultor["contrato_status_norm"] = df_consultor["status_contratos"].apply(label_contrato)
 else:
     df_consultor["contrato_status_norm"] = "sem status"
 
@@ -441,8 +505,7 @@ executadas_n_qual = (cons_f["status_da_reuniao"] == "Executada não Qualificada"
 executadas_qual = (cons_f["status_da_reuniao"] == "Executada Qualificada").sum()
 no_show = (cons_f["status_da_reuniao"] == "No-Show").sum()
 remarcadas = (cons_f["status_da_reuniao"] == "Remarcada").sum()
-enviados = (cons_f["contrato"] == "Contrato Enviado (Em negociação)").sum()
-assinados = (cons_f["contrato"] == "Contrato Assinado").sum()
+assinados = (cons_f["status_contratos"] == "CONTRATO ASSINADO").sum()
 futuro = (cons_f["contrato"] == "Futuro").sum()
 perdeu = (cons_f["status_reuniao_norm"] == "Perdeu").sum()
 executadas = executadas_qual + executadas_n_qual
@@ -453,8 +516,7 @@ prev_executadas_n_qual = (cons_prev["status_da_reuniao"] == "Executada não Qual
 prev_executadas_qual = (cons_prev["status_da_reuniao"] == "Executada Qualificada").sum() if "status_da_reuniao" in cons_prev.columns else 0
 prev_no_show = (cons_prev["status_da_reuniao"] == "No-Show").sum() if "status_da_reuniao" in cons_prev.columns else 0
 prev_remarcadas = (cons_prev["status_da_reuniao"] == "Remarcada").sum() if "status_da_reuniao" in cons_prev.columns else 0
-prev_enviados = (cons_prev["contrato"] == "Contrato Enviado (Em negociação)").sum() if "contrato" in cons_prev.columns else 0
-prev_assinados = (cons_prev["contrato"] == "Contrato Assinado").sum() if "contrato" in cons_prev.columns else 0
+prev_assinados = (cons_prev["status_contratos"] == "CONTRATO ASSINADO").sum() if "status_contratos" in cons_prev.columns else 0
 prev_futuro = (cons_prev["contrato"] == "Futuro").sum() if "contrato" in cons_prev.columns else 0
 prev_perdeu = (cons_prev["status_reuniao_norm"] == "Perdeu").sum() if "status_reuniao_norm" in cons_prev.columns else 0
 
@@ -464,7 +526,6 @@ delta_executadas_qual = int(executadas_qual) - int(prev_executadas_qual)
 delta_executadas_n_qual = int(executadas_n_qual) - int(prev_executadas_n_qual)
 delta_remarcadas = int(remarcadas) - int(prev_remarcadas)
 delta_no_show = int(no_show) - int(prev_no_show)
-delta_enviados = int(enviados) - int(prev_enviados)
 delta_assinados = int(assinados) - int(prev_assinados)
 delta_futuro = int(futuro) - int(prev_futuro)
 delta_perdeu = int(perdeu) - int(prev_perdeu)
@@ -486,7 +547,7 @@ with row[1]:
     cc1, cc2, cc3 = st.columns(3)
     cc1.metric("Perdeu", int(perdeu), delta=int(delta_perdeu))
     cc2.metric("🔜 Futuras", int(futuro), delta=int(delta_futuro))
-    cc3.metric("📄 Contratos (Env/Ass)", f"{int(enviados)}/{int(assinados)}", delta=f"{delta_enviados:+d}/{delta_assinados:+d}")
+    cc3.metric("📄 Contratos Assinados", f"{int(assinados)}", delta=int(delta_assinados))
 st.markdown("---")
 
 # ------------------------------------------------------------
@@ -505,8 +566,8 @@ with tabs[0]:
     col_funil, col_conv = st.columns([3, 2])
     with col_funil:
         funil = pd.DataFrame({
-            "Etapa": ["Contratos Assinados", "Contratos Enviados", "Qualificadas", "Executadas", "Agendadas"],
-            "Qtd": [assinados, enviados, executadas_qual, executadas, total_agendadas],
+            "Etapa": ["Contratos Assinados", "Qualificadas", "Executadas", "Agendadas"],
+            "Qtd": [assinados, executadas_qual, executadas, total_agendadas],
         })
         fig_funil = px.funnel(funil, x="Qtd", y="Etapa", color="Etapa")
         style_fig(fig_funil)
@@ -518,28 +579,23 @@ with tabs[0]:
 
         conv_exec = _pct(executadas, total_agendadas)
         conv_qual = _pct(executadas_qual, executadas)
-        conv_env = _pct(enviados, executadas_qual)
-        conv_ass = _pct(assinados, enviados)
+        conv_ass = _pct(executadas_qual, assinados)
 
         prev_total_agendadas = len(sdr_prev)
         prev_executadas_n_qual = (cons_prev["status_da_reuniao"] == "Executada não Qualificada").sum() if "status_da_reuniao" in cons_prev.columns else 0
         prev_executadas_qual = (cons_prev["status_da_reuniao"] == "Executada Qualificada").sum() if "status_da_reuniao" in cons_prev.columns else 0
         prev_executadas = int(prev_executadas_qual) + int(prev_executadas_n_qual)
-        prev_enviados = (cons_prev["contrato"] == "Contrato Enviado (Em negociação)").sum() if "contrato" in cons_prev.columns else 0
         prev_assinados = (cons_prev["contrato"] == "Contrato Assinado").sum() if "contrato" in cons_prev.columns else 0
 
         conv_exec_prev = _pct(prev_executadas, prev_total_agendadas)
         conv_qual_prev = _pct(prev_executadas_qual, prev_executadas)
-        conv_env_prev = _pct(prev_enviados, prev_executadas_qual)
-        conv_ass_prev = _pct(prev_assinados, prev_enviados)
+        conv_ass_prev = _pct(prev_executadas_qual, prev_assinados)
 
         st.caption("Conversões do período (Δ vs anterior)")
-        m1, m2 = st.columns(2)
+        m1, m2, m3 = st.columns(3)
         m1.metric("Execução", f"{conv_exec:.1f}%", delta=f"{(conv_exec - conv_exec_prev):+.1f} pp")
         m2.metric("Qualificação", f"{conv_qual:.1f}%", delta=f"{(conv_qual - conv_qual_prev):+.1f} pp")
-        m3, m4 = st.columns(2)
-        m3.metric("Envio de Contrato", f"{conv_env:.1f}%", delta=f"{(conv_env - conv_env_prev):+.1f} pp")
-        m4.metric("Fechamento", f"{conv_ass:.1f}%", delta=f"{(conv_ass - conv_ass_prev):+.1f} pp")
+        m3.metric("Fechamento", f"{conv_ass:.1f}%", delta=f"{(conv_ass - conv_ass_prev):+.1f} pp")
 
     # Distribuição por Status
     st.subheader("Distribuição por Status da Reunião")
@@ -563,11 +619,20 @@ with tabs[1]:
     bar_h = 340
 
     sdr_only_agendamentos = sdr_f[(sdr_f["nome_do_sdr"].notna()) & (sdr_f["nome_do_sdr"] != "Consultor (eu mesmo)")]
-    agendadas_sdrs = len(sdr_only_agendamentos)
+    # Restringe a agendadas com data válida no campo ativo
+    agendadas_sdrs = (
+        len(sdr_only_agendamentos[sdr_only_agendamentos[sdr_date_col].notna()])
+        if sdr_date_col and sdr_date_col in sdr_only_agendamentos.columns
+        else len(sdr_only_agendamentos)
+    )
     sdr_only_feedbacks = cons_f[(cons_f["nome_do_sdr"].notna()) & (cons_f["nome_do_sdr"] != "Consultor (eu mesmo)")]
 
     cons_only_agendamentos = sdr_f[(sdr_f["nome_do_sdr"].notna()) & (sdr_f["nome_do_sdr"] == "Consultor (eu mesmo)")]
-    agendadas_cons = len(cons_only_agendamentos)
+    agendadas_cons = (
+        len(cons_only_agendamentos[cons_only_agendamentos[sdr_date_col].notna()])
+        if sdr_date_col and sdr_date_col in cons_only_agendamentos.columns
+        else len(cons_only_agendamentos)
+    )
     cons_only_feedbacks = cons_f[(cons_f["nome_do_sdr"].notna()) & (cons_f["nome_do_sdr"] == "Consultor (eu mesmo)")]
 
     filtro_operador = st.radio("Filtrar por:", ["SDRs", "Consultores"], horizontal=True)
@@ -576,12 +641,20 @@ with tabs[1]:
         agendadas_f = agendadas_sdrs
         only_f = sdr_only_agendamentos
         reunioes_f = sdr_only_feedbacks
-        executadas_qual_f = (reunioes_f["status_da_reuniao"] == "Executada Qualificada").sum() if "status_da_reuniao" in reunioes_f.columns else 0
+        executadas_qual_f = (
+            ((reunioes_f["status_da_reuniao"] == "Executada Qualificada") & reunioes_f[cons_date_col].notna()).sum()
+            if ("status_da_reuniao" in reunioes_f.columns and cons_date_col and cons_date_col in reunioes_f.columns)
+            else ((reunioes_f["status_da_reuniao"] == "Executada Qualificada").sum() if "status_da_reuniao" in reunioes_f.columns else 0)
+        )
     else:
         agendadas_f = agendadas_cons
         only_f = cons_only_agendamentos
         reunioes_f = cons_only_feedbacks
-        executadas_qual_f = (reunioes_f["status_da_reuniao"] == "Executada Qualificada").sum() if "status_da_reuniao" in reunioes_f.columns else 0
+        executadas_qual_f = (
+            ((reunioes_f["status_da_reuniao"] == "Executada Qualificada") & reunioes_f[cons_date_col].notna()).sum()
+            if ("status_da_reuniao" in reunioes_f.columns and cons_date_col and cons_date_col in reunioes_f.columns)
+            else ((reunioes_f["status_da_reuniao"] == "Executada Qualificada").sum() if "status_da_reuniao" in reunioes_f.columns else 0)
+        )
     
     # Métricas globais para metas
     n_sdrs = df_equipe[df_equipe['cargo'] == 'SDR'].shape[0]
@@ -639,7 +712,11 @@ with tabs[1]:
         st.plotly_chart(fig_g2, use_container_width=True)
 
     with cols_top[4]:
-        assinados_f = (reunioes_f["contrato"] == "Contrato Assinado").sum()
+        assinados_f = (
+            ((reunioes_f["status_contratos"] == "CONTRATO ASSINADO") & reunioes_f[cons_date_col].notna()).sum()
+            if ("status_contratos" in reunioes_f.columns and cons_date_col and cons_date_col in reunioes_f.columns)
+            else ((reunioes_f["status_contratos"] == "CONTRATO ASSINADO").sum() if "status_contratos" in reunioes_f.columns else 0)
+        )
         fig_g3 = go.Figure(
             go.Indicator(
                 mode="gauge",
@@ -765,7 +842,7 @@ with tabs[1]:
 
     with c3:
         # Gráfico de Linha Acumulado
-        mask_ass = (reunioes_f["contrato"] == "Contrato Assinado") if "contrato" in reunioes_f.columns else None
+        mask_ass = (reunioes_f["status_contratos"] == "CONTRATO ASSINADO") if "status_contratos" in reunioes_f.columns else None
         serie_ass = _by_day(reunioes_f, cons_date_col, mask_ass, "Contratos Assinados")
         ts_ass = pd.DataFrame({"Data": idx}).merge(serie_ass.rename_axis("Data").reset_index(), on="Data", how="left")
         if "Contratos Assinados" in ts_ass.columns:
