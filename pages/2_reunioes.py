@@ -569,7 +569,7 @@ with tabs[0]:
         })
         fig_funil = px.funnel(funil, x="Qtd", y="Etapa", color="Etapa")
         style_fig(fig_funil)
-        st.plotly_chart(fig_funil, use_container_width=True)
+        st.plotly_chart(fig_funil, width='stretch')
 
     with col_conv:
         def _pct(a: int | float, b: int | float) -> float:
@@ -603,7 +603,7 @@ with tabs[0]:
         fig_bar_status = px.bar(dist, x="Qtd", y="Status", orientation="h", text="Qtd", color="Status")
         fig_bar_status.update_traces(textposition="outside", cliponaxis=False)
         style_fig(fig_bar_status)
-        st.plotly_chart(fig_bar_status, use_container_width=True)
+        st.plotly_chart(fig_bar_status, width='stretch')
 
 # ------------------------------------------------------------
 # ABA: EVOLUÇÃO DIÁRIA
@@ -685,7 +685,7 @@ with tabs[1]:
         # Aplicar estilo primeiro e depois ajustar alturas/margens específicas
         style_fig(fig_g1)
         fig_g1.update_layout(height=gauge_h, margin=dict(t=28, b=4, l=0, r=0))
-        st.plotly_chart(fig_g1, use_container_width=True)
+        st.plotly_chart(fig_g1, width='stretch')
 
     with cols_top[2]:
         fig_g2 = go.Figure(
@@ -707,7 +707,7 @@ with tabs[1]:
         )
         style_fig(fig_g2)
         fig_g2.update_layout(height=gauge_h, margin=dict(t=28, b=4, l=0, r=0))
-        st.plotly_chart(fig_g2, use_container_width=True)
+        st.plotly_chart(fig_g2, width='stretch')
 
     with cols_top[4]:
         assinados_f = (
@@ -734,7 +734,7 @@ with tabs[1]:
         )
         style_fig(fig_g3)
         fig_g3.update_layout(height=gauge_h, margin=dict(t=28, b=4, l=0, r=0))
-        st.plotly_chart(fig_g3, use_container_width=True)
+        st.plotly_chart(fig_g3, width='stretch')
 
     conv_exec = _pct(executadas_qual_f, agendadas_f)
     conv_env = _pct(assinados_f, executadas_qual_f)
@@ -788,7 +788,7 @@ with tabs[1]:
             fig_l1.update_yaxes(range=[0, max(1.0, y_max_acc_1, y_meta_1) * 1.12], automargin=True)
             fig_l1.update_layout(height=line_h, margin=dict(t=20, b=10, l=0, r=0))
             style_fig(fig_l1)
-            st.plotly_chart(fig_l1, use_container_width=True)
+            st.plotly_chart(fig_l1, width='stretch')
 
             # Gráfico de Barras
             fig_b1 = px.bar(ts_ag, x="Data", y="Agendadas", text="Agendadas")
@@ -798,7 +798,7 @@ with tabs[1]:
             fig_b1.add_hline(y=(7 * n_sdrs), line_dash="dash", line_color="#bfa94c")
             fig_b1.update_layout(height=bar_h)
             style_fig(fig_b1)
-            st.plotly_chart(fig_b1, use_container_width=True)
+            st.plotly_chart(fig_b1, width='stretch')
 
     with c2:
         # Gráfico de Linha Acumulado
@@ -826,7 +826,7 @@ with tabs[1]:
             fig_l2.update_yaxes(range=[0, max(1.0, y_max_acc_2, y_meta_2) * 1.12], automargin=True)
             fig_l2.update_layout(height=line_h, margin=dict(t=20, b=10, l=0, r=0))
             style_fig(fig_l2)
-            st.plotly_chart(fig_l2, use_container_width=True)
+            st.plotly_chart(fig_l2, width='stretch')
 
             # Gráfico de Barras
             fig_b2 = px.bar(ts_eq, x="Data", y="Executadas Qualificadas", text="Executadas Qualificadas")
@@ -836,7 +836,7 @@ with tabs[1]:
             fig_b2.add_hline(y=(4 * n_sdrs), line_dash="dash", line_color="#bfa94c")
             fig_b2.update_layout(height=bar_h)
             style_fig(fig_b2)
-            st.plotly_chart(fig_b2, use_container_width=True)
+            st.plotly_chart(fig_b2, width='stretch')
 
     with c3:
         # Gráfico de Linha Acumulado
@@ -864,7 +864,7 @@ with tabs[1]:
             fig_l3.update_yaxes(range=[0, max(1.0, y_max_acc_3, y_meta_3) * 1.12], automargin=True)
             fig_l3.update_layout(height=line_h, margin=dict(t=20, b=10, l=0, r=0))
             style_fig(fig_l3)
-            st.plotly_chart(fig_l3, use_container_width=True)
+            st.plotly_chart(fig_l3, width='stretch')
 
             # Gráfico de Barras
             fig_b3 = px.bar(ts_ass, x="Data", y="Contratos Assinados", text="Contratos Assinados")
@@ -874,7 +874,7 @@ with tabs[1]:
             fig_b3.add_hline(y=(1 * n_sdrs), line_dash="dash", line_color="#bfa94c")
             fig_b3.update_layout(height=bar_h)
             style_fig(fig_b3)
-            st.plotly_chart(fig_b3, use_container_width=True)
+            st.plotly_chart(fig_b3, width='stretch')
     st.markdown("---")
 
 # ------------------------------------------------------------
@@ -925,7 +925,7 @@ with tabs[2]:
                 bgcolor="rgba(0,0,0,0)",
             )
             style_fig(fig_sdr)
-            st.plotly_chart(fig_sdr, use_container_width=True)
+                st.plotly_chart(fig_sdr, width='stretch')
             st.dataframe(perf, use_container_width=True, hide_index=True)
         else:
             st.info("Coluna SDR não encontrada na planilha.")
@@ -986,7 +986,7 @@ with tabs[2]:
                     bgcolor="#000000"
                 )
                 style_fig(fig_cag)
-                st.plotly_chart(fig_cag, use_container_width=True)
+                st.plotly_chart(fig_cag, width='stretch')
                 st.dataframe(perf_c, use_container_width=True, hide_index=True)
             else:
                 st.info("Não foi possível identificar as colunas de SDR/Consultor na planilha de agendamentos.")
@@ -1021,7 +1021,7 @@ with tabs[2]:
                 "autorange": "reversed",
             })
             style_fig(fig_cons)
-            st.plotly_chart(fig_cons, use_container_width=True)
+            st.plotly_chart(fig_cons, width='stretch')
             st.dataframe(grp, use_container_width=True, hide_index=True)
         else:
             st.info("Coluna Consultor não encontrada na planilha.")
@@ -1092,7 +1092,7 @@ with tabs[3]:
         fig_ct = px.bar(ct, x="Status do Contrato", y="Qtd", color="Status do Contrato", text="Qtd")
         fig_ct.update_traces(textposition="outside", cliponaxis=False)
         style_fig(fig_ct)
-        st.plotly_chart(fig_ct, use_container_width=True)
+        st.plotly_chart(fig_ct, width='stretch')
     else:
         st.info("Sem dados de contratos.")
 
