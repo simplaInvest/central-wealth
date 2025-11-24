@@ -925,7 +925,7 @@ with tabs[2]:
                 bgcolor="rgba(0,0,0,0)",
             )
             style_fig(fig_sdr)
-                st.plotly_chart(fig_sdr, width='stretch')
+            st.plotly_chart(fig_sdr, width='stretch')
             st.dataframe(perf, use_container_width=True, hide_index=True)
         else:
             st.info("Coluna SDR não encontrada na planilha.")
