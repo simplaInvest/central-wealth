@@ -633,7 +633,7 @@ with tabs[1]:
     )
     cons_only_feedbacks = cons_f[(cons_f["nome_do_sdr"].notna()) & (cons_f["nome_do_sdr"] == "Consultor (eu mesmo)")]
 
-    filtro_operador = st.radio("Filtrar por:", ["SDRs", "Consultores"], horizontal=True)
+    filtro_operador = st.radio("Filtrar por:", ["SDRs", "Consultores", "Consolidado"], horizontal=True)
 
     if filtro_operador == "SDRs":
         agendadas_f = agendadas_sdrs
@@ -644,10 +644,19 @@ with tabs[1]:
             if ("status_da_reuniao" in reunioes_f.columns and cons_date_col and cons_date_col in reunioes_f.columns)
             else ((reunioes_f["status_da_reuniao"] == "Executada Qualificada").sum() if "status_da_reuniao" in reunioes_f.columns else 0)
         )
-    else:
+    elif filtro_operador == "Consultores":
         agendadas_f = agendadas_cons
         only_f = cons_only_agendamentos
         reunioes_f = cons_only_feedbacks
+        executadas_qual_f = (
+            ((reunioes_f["status_da_reuniao"] == "Executada Qualificada") & reunioes_f[cons_date_col].notna()).sum()
+            if ("status_da_reuniao" in reunioes_f.columns and cons_date_col and cons_date_col in reunioes_f.columns)
+            else ((reunioes_f["status_da_reuniao"] == "Executada Qualificada").sum() if "status_da_reuniao" in reunioes_f.columns else 0)
+        )
+    else:  # Consolidado
+        agendadas_f = int(agendadas_sdrs) + int(agendadas_cons)
+        only_f = pd.concat([sdr_only_agendamentos, cons_only_agendamentos], ignore_index=True)
+        reunioes_f = pd.concat([sdr_only_feedbacks, cons_only_feedbacks], ignore_index=True)
         executadas_qual_f = (
             ((reunioes_f["status_da_reuniao"] == "Executada Qualificada") & reunioes_f[cons_date_col].notna()).sum()
             if ("status_da_reuniao" in reunioes_f.columns and cons_date_col and cons_date_col in reunioes_f.columns)
@@ -772,6 +781,8 @@ with tabs[1]:
             ts_ag["Agendadas_Acumulado"] = ts_ag["Agendadas"].cumsum()
             fig_l1 = px.line(ts_ag, x="Data", y="Agendadas_Acumulado", markers=True)
             fig_l1.update_traces(mode="lines+markers+text", text=ts_ag["Agendadas_Acumulado"], textposition="top center", cliponaxis=False)
+            # Oculta finais de semana no eixo X
+            fig_l1.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
             # Meta diária acumulada (SDRs): 7 * n_sdrs por dia
             meta_ag_acc = None
             if filtro_operador == "SDRs":
@@ -793,6 +804,8 @@ with tabs[1]:
             # Gráfico de Barras
             fig_b1 = px.bar(ts_ag, x="Data", y="Agendadas", text="Agendadas")
             fig_b1.update_traces(textposition="outside", cliponaxis=False)
+            # Oculta finais de semana no eixo X
+            fig_b1.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
             y_max_1 = max(int(ts_ag["Agendadas"].max()), 0)
             fig_b1.update_yaxes(range=[0, max(y_max_1, (7 * n_sdrs)) * 1.2])
             fig_b1.add_hline(y=(7 * n_sdrs), line_dash="dash", line_color="#bfa94c")
@@ -810,6 +823,8 @@ with tabs[1]:
             ts_eq["Executadas_Qualificadas_Acumulado"] = ts_eq["Executadas Qualificadas"].cumsum()
             fig_l2 = px.line(ts_eq, x="Data", y="Executadas_Qualificadas_Acumulado", markers=True)
             fig_l2.update_traces(mode="lines+markers+text", text=ts_eq["Executadas_Qualificadas_Acumulado"], textposition="top center", cliponaxis=False)
+            # Oculta finais de semana no eixo X
+            fig_l2.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
             # Meta diária acumulada (SDRs): 4 * n_sdrs por dia
             meta_eq_acc = None
             if filtro_operador == "SDRs":
@@ -831,6 +846,8 @@ with tabs[1]:
             # Gráfico de Barras
             fig_b2 = px.bar(ts_eq, x="Data", y="Executadas Qualificadas", text="Executadas Qualificadas")
             fig_b2.update_traces(textposition="outside", cliponaxis=False)
+            # Oculta finais de semana no eixo X
+            fig_b2.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
             y_max_2 = max(int(ts_eq["Executadas Qualificadas"].max()), 0)
             fig_b2.update_yaxes(range=[0, max(y_max_2, (4 * n_sdrs)) * 1.2])
             fig_b2.add_hline(y=(4 * n_sdrs), line_dash="dash", line_color="#bfa94c")
@@ -848,6 +865,8 @@ with tabs[1]:
             ts_ass["Contratos_Assinados_Acumulado"] = ts_ass["Contratos Assinados"].cumsum()
             fig_l3 = px.line(ts_ass, x="Data", y="Contratos_Assinados_Acumulado", markers=True)
             fig_l3.update_traces(mode="lines+markers+text", text=ts_ass["Contratos_Assinados_Acumulado"], textposition="top center", cliponaxis=False)
+            # Oculta finais de semana no eixo X
+            fig_l3.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
             # Meta diária acumulada (SDRs): 1 * n_sdrs por dia
             meta_ass_acc = None
             if filtro_operador == "SDRs":
@@ -869,6 +888,8 @@ with tabs[1]:
             # Gráfico de Barras
             fig_b3 = px.bar(ts_ass, x="Data", y="Contratos Assinados", text="Contratos Assinados")
             fig_b3.update_traces(textposition="outside", cliponaxis=False)
+            # Oculta finais de semana no eixo X
+            fig_b3.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
             y_max_3 = max(int(ts_ass["Contratos Assinados"].max()), 0)
             fig_b3.update_yaxes(range=[0, max(y_max_3, (1 * n_sdrs)) * 1.2])
             fig_b3.add_hline(y=(1 * n_sdrs), line_dash="dash", line_color="#bfa94c")
