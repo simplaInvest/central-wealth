@@ -11,6 +11,7 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime, date, timedelta
 import calendar
 import textwrap
+from data.api_calls import request_generic
 
 # ------------------------------------------------------------
 # CONFIGURAÇÕES DA PÁGINA
@@ -120,6 +121,43 @@ def _normalize_phone(x: str | int | float | None) -> str | None:
     if len(s) > 11:
         s = s[-11:]  # 2) mantém os 11 últimos
     return s or None
+
+@st.cache_data(ttl=900, show_spinner=False)
+def load_contratos_assinados_sheet() -> set[str]:
+    """Extrai telefones normalizados com STATUS 'CONTRATO ASSINADO' da aba TUDO da planilha (Google Sheets)."""
+    try:
+        df_api = st.session_state.get("contratos")
+        if df_api is None or df_api.empty:
+            df_api = load_worksheet(SHEET_URL_CONTRATOS, TAB_CONTRATOS)
+        df_api = df_api.copy()
+        df_api.columns = [_slugify(c) for c in df_api.columns]
+        status_col = find_column_by_patterns(df_api, ["status"]) or ("status" if "status" in df_api.columns else None)
+        numero_col = find_column_by_patterns(df_api, ["numero", "número", "telefone", "celular"]) or (
+            "numero" if "numero" in df_api.columns else None
+        )
+        if not status_col or not numero_col or df_api.empty:
+            return set()
+        status_up = df_api[status_col].astype(str).str.strip().str.upper()
+        df_signed = df_api[status_up == "CONTRATO ASSINADO"].copy()
+        if df_signed.empty:
+            return set()
+        df_signed["__num_norm__"] = df_signed[numero_col].apply(_normalize_phone)
+        return set(df_signed["__num_norm__"].dropna().unique().tolist())
+    except Exception:
+        return set()
+
+@st.cache_data(ttl=900, show_spinner=False)
+def fetch_contratos_sheet_df() -> pd.DataFrame:
+    """Retorna o DataFrame da planilha de contratos (Google Sheets), com colunas padronizadas."""
+    try:
+        df_api = st.session_state.get("contratos")
+        if df_api is None or df_api.empty:
+            df_api = load_worksheet(SHEET_URL_CONTRATOS, TAB_CONTRATOS)
+        df_api = df_api.copy()
+        df_api.columns = [_slugify(c) for c in df_api.columns]
+        return df_api
+    except Exception:
+        return pd.DataFrame([])
 
 def get_role_column(df: pd.DataFrame, canonical: str) -> str | None:
     if df is None or df.empty:
@@ -470,6 +508,35 @@ sdr_prev = apply_filters(df_sdr.copy(), sdr_date_col, prev_ini, prev_fim)
 cons_prev = apply_filters(df_consultor.copy(), cons_date_col, prev_ini, prev_fim)
 
 # ------------------------------------------------------------
+# CONTRATOS ASSINADOS (via Google Sheets) → coluna booleana em cons_f/cons_prev
+# ------------------------------------------------------------
+try:
+    signed_numbers = load_contratos_assinados_sheet()
+    # Usa diretamente __phone_norm__ se já existir; caso contrário, faz fallback para normalização
+    if "__phone_norm__" in cons_f.columns:
+        cons_f["Contrato assinado"] = cons_f["__phone_norm__"].isin(signed_numbers)
+    else:
+        cons_phone_col = find_column_by_patterns(cons_f, ["contato", "telefone", "celular", "numero", "número"]) 
+        if cons_phone_col:
+            cons_f["__phone_norm__"] = cons_f[cons_phone_col].apply(_normalize_phone)
+            cons_f["Contrato assinado"] = cons_f["__phone_norm__"].isin(signed_numbers)
+        else:
+            cons_f["Contrato assinado"] = False
+
+    if "__phone_norm__" in cons_prev.columns:
+        cons_prev["Contrato assinado"] = cons_prev["__phone_norm__"].isin(signed_numbers)
+    else:
+        prev_phone_col = find_column_by_patterns(cons_prev, ["contato", "telefone", "celular", "numero", "número"]) 
+        if prev_phone_col:
+            cons_prev["__phone_norm__"] = cons_prev[prev_phone_col].apply(_normalize_phone)
+            cons_prev["Contrato assinado"] = cons_prev["__phone_norm__"].isin(signed_numbers)
+        else:
+            cons_prev["Contrato assinado"] = False
+except Exception as e:
+    st.warning(f"Falha ao carregar/atribuir contratos assinados via API: {e}")
+
+
+# ------------------------------------------------------------
 # REGRA DE CONTAGEM (SDR): "Tipo de Agendamento" vazio ou "Primeira Reunião"
 # ------------------------------------------------------------
 tipo_agendamento_col = find_column_by_patterns(df_sdr, ["Tipo de Agendamento", "tipo de agendamento"]) or (
@@ -503,7 +570,7 @@ executadas_n_qual = (cons_f["status_da_reuniao"] == "Executada não Qualificada"
 executadas_qual = (cons_f["status_da_reuniao"] == "Executada Qualificada").sum()
 no_show = (cons_f["status_da_reuniao"] == "No-Show").sum()
 remarcadas = (cons_f["status_da_reuniao"] == "Remarcada").sum()
-assinados = (cons_f["status_contratos"] == "CONTRATO ASSINADO").sum()
+assinados = int(cons_f["Contrato assinado"].sum()) if "Contrato assinado" in cons_f.columns else 0
 futuro = (cons_f["contrato"] == "Futuro").sum()
 perdeu = (cons_f["status_reuniao_norm"] == "Perdeu").sum()
 executadas = executadas_qual + executadas_n_qual
@@ -514,7 +581,7 @@ prev_executadas_n_qual = (cons_prev["status_da_reuniao"] == "Executada não Qual
 prev_executadas_qual = (cons_prev["status_da_reuniao"] == "Executada Qualificada").sum() if "status_da_reuniao" in cons_prev.columns else 0
 prev_no_show = (cons_prev["status_da_reuniao"] == "No-Show").sum() if "status_da_reuniao" in cons_prev.columns else 0
 prev_remarcadas = (cons_prev["status_da_reuniao"] == "Remarcada").sum() if "status_da_reuniao" in cons_prev.columns else 0
-prev_assinados = (cons_prev["status_contratos"] == "CONTRATO ASSINADO").sum() if "status_contratos" in cons_prev.columns else 0
+prev_assinados = int(cons_prev["Contrato assinado"].sum()) if "Contrato assinado" in cons_prev.columns else 0
 prev_futuro = (cons_prev["contrato"] == "Futuro").sum() if "contrato" in cons_prev.columns else 0
 prev_perdeu = (cons_prev["status_reuniao_norm"] == "Perdeu").sum() if "status_reuniao_norm" in cons_prev.columns else 0
 
@@ -583,7 +650,7 @@ with tabs[0]:
         prev_executadas_n_qual = (cons_prev["status_da_reuniao"] == "Executada não Qualificada").sum() if "status_da_reuniao" in cons_prev.columns else 0
         prev_executadas_qual = (cons_prev["status_da_reuniao"] == "Executada Qualificada").sum() if "status_da_reuniao" in cons_prev.columns else 0
         prev_executadas = int(prev_executadas_qual) + int(prev_executadas_n_qual)
-        prev_assinados = (cons_prev["contrato"] == "Contrato Assinado").sum() if "contrato" in cons_prev.columns else 0
+        prev_assinados = int(cons_prev["Contrato assinado"].sum()) if "Contrato assinado" in cons_prev.columns else 0
 
         conv_exec_prev = _pct(prev_executadas, prev_total_agendadas)
         conv_qual_prev = _pct(prev_executadas_qual, prev_executadas)
@@ -720,9 +787,9 @@ with tabs[1]:
 
     with cols_top[4]:
         assinados_f = (
-            ((reunioes_f["status_contratos"] == "CONTRATO ASSINADO") & reunioes_f[cons_date_col].notna()).sum()
-            if ("status_contratos" in reunioes_f.columns and cons_date_col and cons_date_col in reunioes_f.columns)
-            else ((reunioes_f["status_contratos"] == "CONTRATO ASSINADO").sum() if "status_contratos" in reunioes_f.columns else 0)
+            ((reunioes_f["Contrato assinado"] == True) & reunioes_f[cons_date_col].notna()).sum()
+            if ("Contrato assinado" in reunioes_f.columns and cons_date_col and cons_date_col in reunioes_f.columns)
+            else (int(reunioes_f["Contrato assinado"].sum()) if "Contrato assinado" in reunioes_f.columns else 0)
         )
         fig_g3 = go.Figure(
             go.Indicator(
@@ -857,7 +924,7 @@ with tabs[1]:
 
     with c3:
         # Gráfico de Linha Acumulado
-        mask_ass = (reunioes_f["status_contratos"] == "CONTRATO ASSINADO") if "status_contratos" in reunioes_f.columns else None
+        mask_ass = (reunioes_f["Contrato assinado"] == True) if "Contrato assinado" in reunioes_f.columns else None
         serie_ass = _by_day(reunioes_f, cons_date_col, mask_ass, "Contratos Assinados")
         ts_ass = pd.DataFrame({"Data": idx}).merge(serie_ass.rename_axis("Data").reset_index(), on="Data", how="left")
         if "Contratos Assinados" in ts_ass.columns:
@@ -1021,7 +1088,7 @@ with tabs[2]:
                 Reunioes=("status_da_reuniao", "count"),
                 Executadas=("status_da_reuniao", lambda x: x.isin(["Executada Qualificada", "Executada não Qualificada"]).sum()),
                 Qualificadas=("status_da_reuniao", lambda x: (x=="Executada Qualificada").sum()),
-                Contratos_Assinados=("contrato", lambda x: (x=="Contrato Assinado").sum()),
+                Contratos_Assinados=("Contrato assinado", "sum"),
             ).reset_index()
             grp = grp.sort_values(by="Contratos_Assinados", ascending=False)
             grp["Tx Exec (%)"] = np.where(grp["Reunioes"]>0, grp["Executadas"]/grp["Reunioes"]*100, 0).round(1)
@@ -1054,7 +1121,7 @@ with tabs[2]:
     for sdr in sdrs:
         sdr_reunioes = sdr_f.loc[sdr_f["nome_do_sdr"].eq(sdr)].shape[0]
         sdr_n_qual = cons_f.loc[cons_f["nome_do_sdr"].eq(sdr) & cons_f["status_da_reuniao"].eq("Executada Qualificada")].shape[0]
-        sdr_n_cont = cons_f.loc[cons_f["nome_do_sdr"].eq(sdr) & cons_f["contrato"].eq("Contrato Assinado")].shape[0]
+        sdr_n_cont = cons_f.loc[cons_f["nome_do_sdr"].eq(sdr) & cons_f["Contrato assinado"].eq(True)].shape[0]
 
         rows.append({
             "SDR": sdr,
