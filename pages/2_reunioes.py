@@ -1027,7 +1027,7 @@ with tabs[2]:
             cons_col_in_cons = get_role_column(cons_f, "consultor")
             if sdr_col and cons_col_in_sdr:
                 df_cons_ag = sdr_f.copy()
-                df_cons_ag = df_cons_ag[df_cons_ag[sdr_col].fillna("") == "Consultor (eu mesmo)"]
+                df_cons_ag = df_cons_ag[df_cons_ag[sdr_col].astype(str).str.contains("consultor", case=False, na=False)]
                 ag = df_cons_ag.groupby(cons_col_in_sdr).size().rename("Agendadas")
                 if cons_col_in_cons and "status_da_reuniao" in cons_f.columns:
                     ex = cons_f.groupby(cons_col_in_cons)["status_da_reuniao"].apply(lambda x: x.isin(["Executada Qualificada", "Executada não Qualificada"]).sum()).rename("Executadas")

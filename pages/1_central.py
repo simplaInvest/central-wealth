@@ -107,7 +107,7 @@ with grafs_cols[0]:
     )
     fig.update_layout(legend=dict(orientation="h", yanchor="bottom", y=-0.2))  # legenda horizontal fora do gráfico (opcional)
 
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(fig, use_container_width=True)
 
     fig, df_plot = bar_chart(
         hist_captacao,
@@ -129,7 +129,7 @@ with grafs_cols[0]:
     )
     fig.update_layout(legend=dict(orientation="h", yanchor="bottom", y=-0.2))  # legenda horizontal fora do gráfico (opcional)
 
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(fig, use_container_width=True)
 
 with grafs_cols[1]:
     fig, df_plot = bar_chart(
@@ -151,7 +151,7 @@ with grafs_cols[1]:
         margin=dict(t=40, b=30, l=10, r=10),  # margens mais enxutas
     )
     fig.update_layout(legend=dict(orientation="h", yanchor="bottom", y=-0.2))  # legenda horizontal fora do gráfico (opcional)
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(fig, use_container_width=True)
 
     fig, df_plot = pie_chart(
         proporcao_custodia,
@@ -171,5 +171,5 @@ with grafs_cols[1]:
         margin=dict(t=40, b=30, l=10, r=10),
     )
     fig.update_layout(legend=dict(orientation="h", yanchor="bottom", y=-0.2))  # opcional
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(fig, use_container_width=True)
 
